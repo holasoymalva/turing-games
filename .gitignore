@@ -1,0 +1,92 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Entorno virtual
+venv/
+env/
+ENV/
+.env
+.venv
+env.bak/
+venv.bak/
+
+# Claves API y archivos de configuración
+.env
+*.pem
+config.ini
+secrets.json
+
+# Streamlit
+.streamlit/secrets.toml
+
+# Logs y archivos temporales
+*.log
+local_settings.py
+db.sqlite3
+db.sqlite3-journal
+*.pot
+*.mo
+*.bak
+*.swp
+*~
+
+# Directorios de caché
+.cache/
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Directorio de VSCode
+.vscode/
+*.code-workspace
+
+# Directorio de PyCharm
+.idea/
+
+# Directorio de Jupiter Notebook
+.ipynb_checkpoints
+
+# Mac OS
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon
+._*
+
+# Windows
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+*.cab
+*.msi
+*.msm
+*.msp
+*.lnk
+
+# Archivos específicos del proyecto
+session_data/
+user_data/
+*.pickles
