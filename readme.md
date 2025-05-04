@@ -1,15 +1,15 @@
-# Juego de Identificación: ¿Agente o Humano?
+# Turing Games: ¿Quién es el Agente? ¿Quién es el Humano?
 
-Este proyecto implementa un juego de estilo Turing donde jugadores humanos interactúan con agentes de IA (Claude de Anthropic y Gemini de Google) a través de una interfaz de chat, intentando determinar quién es humano y quién es un agente de IA.
+Este proyecto implementa un juego de estilo Turing donde múltiples jugadores humanos interactúan con agentes de IA (Claude de Anthropic y Gemini de Google) a través de una interfaz de chat en tiempo real, intentando determinar quién es humano y quién es un agente de IA.
 
 ## Características
 
-- Interfaz web creada con Streamlit
-- Integración con APIs de Anthropic (Claude) y Google (Gemini)
-- Sistema de rondas de conversación y votación
-- Puntuación para los jugadores humanos
-- Estadísticas de detección por ronda
-- Revelación de identidades al final del juego
+- **Multijugador en Tiempo Real**: Cada jugador puede unirse desde su propio dispositivo
+- **Chat en Tiempo Real**: Comunicación sincronizada entre todos los participantes
+- **Integración con APIs de IA**: Utiliza Anthropic Claude y Google Gemini para los agentes
+- **Sistema de Rondas y Votación**: Mecánica para identificar quién es IA y quién es humano
+- **Sincronización con Firebase**: Backend para manejar datos entre múltiples dispositivos
+- **Interfaz Responsive**: Diseñada para funcionar en diferentes tamaños de pantalla
 
 ## Requisitos
 
@@ -18,14 +18,15 @@ Este proyecto implementa un juego de estilo Turing donde jugadores humanos inter
 - Claves API para:
   - Anthropic Claude 
   - Google Gemini
+- Credenciales de Firebase
 
 ## Configuración del Entorno
 
 ### 1. Clonar el Repositorio
 
 ```bash
-git clone https://github.com/tu-usuario/agente-humano-juego.git
-cd agente-humano-juego
+git clone https://github.com/tu-usuario/agente-humano-multiplayer.git
+cd agente-humano-multiplayer
 ```
 
 ### 2. Crear un Entorno Virtual
@@ -55,24 +56,21 @@ Con el entorno virtual activado:
 pip install -r requirements.txt
 ```
 
-### 4. Configurar Variables de Entorno
+### 4. Configurar Firebase
 
-Crea un archivo `.env` en el directorio raíz:
-```bash
-# Windows
-copy .env.example .env
+Sigue las instrucciones detalladas en el archivo `FIREBASE_SETUP.md` para configurar Firebase como backend para el juego.
 
-# macOS/Linux
-cp .env.example .env
-```
+### 5. Configurar Variables de Entorno
 
-Edita el archivo `.env` con tus claves API:
+Crea un archivo `.env` en el directorio raíz con el siguiente contenido:
+
 ```
 ANTHROPIC_API_KEY=tu_clave_api_anthropic
 GEMINI_API_KEY=tu_clave_api_gemini
+FIREBASE_CREDENTIALS={"type":"service_account","project_id":"tu-proyecto",...}
 ```
 
-Si no tienes un archivo `.env.example`, crea el archivo `.env` directamente y añade las líneas anteriores.
+Alternativamente, coloca el archivo `firebase-credentials.json` en el directorio del proyecto.
 
 ## Ejecución
 
@@ -86,32 +84,49 @@ La aplicación se abrirá en tu navegador web (generalmente en http://localhost:
 
 ## Cómo Jugar
 
-1. **Configuración del juego**: Define el número de jugadores humanos, agentes IA y rondas.
+### Crear un Nuevo Juego
 
-2. **Durante cada ronda**: 
-   - Los jugadores humanos escriben mensajes en el chat.
-   - Los agentes IA responden automáticamente, intentando parecer humanos.
-   - Todos los jugadores humanos votan quién creen que es IA y quién es humano.
+1. Cuando inicies la aplicación, selecciona la pestaña "Crear Juego"
+2. Ingresa tu nombre
+3. Configura el número de agentes IA y jugadores humanos
+4. Define el número de rondas
+5. Haz clic en "Crear Juego"
+6. Comparte el código del juego con otros jugadores
 
-3. **Al final de cada ronda**:
-   - Se calculan los puntos por aciertos.
-   - Se avanza a la siguiente ronda.
+### Unirse a un Juego Existente
 
-4. **Al final del juego**:
-   - Se revelan las identidades de todos los jugadores.
-   - Se muestra la puntuación final.
-   - Se comparten estadísticas sobre la detección.
+1. Selecciona la pestaña "Unirse a Juego"
+2. Ingresa el código del juego proporcionado por el anfitrión
+3. Ingresa tu nombre
+4. Haz clic en "Unirse"
+
+### Durante el Juego
+
+1. **Fase de Chat**: 
+   - Cada jugador puede enviar hasta 5 mensajes por ronda
+   - Los agentes IA (asignados aleatoriamente) responderán automáticamente, fingiendo ser humanos
+   - Intenta determinar quién es IA y quién es humano basándote en las respuestas
+
+2. **Fase de Votación**:
+   - En la barra lateral, selecciona quién crees que es un agente de IA
+   - Envía tus votos
+
+3. **Resultados**:
+   - Si los humanos identifican correctamente a los agentes, ganan los humanos
+   - Si los agentes engañan a los humanos, ganan las IA
 
 ## Estructura del Proyecto
 
 ```
-agente-humano-juego/
+agente-humano-multiplayer/
 │
-├── app.py                 # Aplicación principal
-├── .env                   # Variables de entorno (claves API)
-├── requirements.txt       # Dependencias del proyecto
-├── README.md              # Este archivo
-└── venv/                  # Entorno virtual (generado al configurar)
+├── app.py                     # Aplicación principal
+├── .env                       # Variables de entorno (claves API)
+├── requirements.txt           # Dependencias del proyecto
+├── README.md                  # Este archivo
+├── FIREBASE_SETUP.md          # Instrucciones para configurar Firebase
+├── firebase-credentials.json  # Credenciales de Firebase (no incluido en el repositorio)
+└── venv/                      # Entorno virtual (generado al configurar)
 ```
 
 ## Obtención de Claves API
@@ -131,67 +146,40 @@ Para obtener una clave API de Google Gemini:
 
 ## Solución de Problemas
 
-### Errores de Entorno Virtual
+### Errores con Firebase
 
-Si encuentras problemas con el entorno virtual:
+- **Error al inicializar Firebase**: Verifica que las credenciales sean correctas y que el formato JSON sea válido.
+- **Error "Permission denied"**: Asegúrate de que las reglas de seguridad de Firestore permitan lectura y escritura.
 
-- **El comando `venv` no se reconoce**: Asegúrate de tener instalado el módulo `venv`:
-  ```bash
-  pip install virtualenv
-  ```
+### Errores con las APIs de IA
 
-- **Problemas de permisos en macOS/Linux**: Intenta con:
-  ```bash
-  chmod +x venv/bin/activate
-  ```
+- **Error con Anthropic**: Si ves un error relacionado con `proxies`, asegúrate de tener instalada la versión correcta de httpx: `pip install httpx==0.27.2`.
+- **Error con Gemini**: Verifica que la clave API sea válida y que tengas conexión a internet.
 
-- **Problemas al activar en Windows PowerShell**: Si tienes restricciones de ejecución, ejecuta:
-  ```powershell
-  Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope CurrentUser
-  ```
+## Despliegue para Acceso Público
 
-### Errores de API
+Para permitir que los jugadores accedan desde diferentes ubicaciones:
 
-- **Errores de autenticación**: Verifica que las claves API en el archivo `.env` sean correctas y actuales.
-- **Errores de cuota**: Las APIs gratuitas suelen tener límites. Consulta tu plan en las respectivas consolas de desarrollador.
+### Usando Streamlit Sharing
 
-## Desactivar el Entorno Virtual
+1. Sube tu código a GitHub
+2. Visita [streamlit.io/sharing](https://streamlit.io/sharing) para desplegar la aplicación
+3. Asegúrate de configurar las variables de entorno en la plataforma
 
-Cuando termines de trabajar en el proyecto:
+### Usando Ngrok (para pruebas)
 
-```bash
-# Windows/macOS/Linux
-deactivate
-```
+1. Instala ngrok: `pip install pyngrok`
+2. Inicia tu aplicación Streamlit: `streamlit run app.py`
+3. En otra terminal, ejecuta: `ngrok http 8501`
+4. Comparte la URL que proporciona ngrok
 
 ## Personalización
 
 Puedes personalizar varios aspectos del juego:
-- Modifica las instrucciones a las IAs en las funciones `get_claude_response` y `get_gemini_response`
-- Ajusta el número máximo de jugadores y rondas
+
+- Modifica las instrucciones a las IAs en las funciones `get_ai_response`
+- Ajusta el número máximo de mensajes por jugador en la variable `messages_per_player`
 - Personaliza la interfaz de usuario modificando los elementos de Streamlit
-
-## Implementación en Producción
-
-Para un despliegue en producción, considera:
-
-1. **Hosting de Streamlit**: 
-   - [Streamlit Sharing](https://streamlit.io/sharing)
-   - [Heroku](https://heroku.com)
-   - [AWS](https://aws.amazon.com)
-
-2. **Gestión de Secretos**:
-   - Usa servicios de gestión de secretos como AWS Secrets Manager o GitHub Secrets
-   - No incluyas el archivo `.env` en el control de versiones
-
-3. **Base de Datos**:
-   - Integra una base de datos para persistencia (SQLite, PostgreSQL, MongoDB)
-
-## Limitaciones Actuales
-
-- La implementación actual asume que todos los jugadores humanos están en el mismo dispositivo
-- Para un uso real, necesitarías implementar autenticación de usuarios
-- En una implementación completa, cada humano tendría su propia sesión
 
 ## Contribuir
 
@@ -209,4 +197,4 @@ Este proyecto está bajo la licencia MIT. Consulta el archivo LICENSE para obten
 
 ---
 
-Este proyecto fue creado como una demostración de las capacidades de las APIs de Anthropic Claude y Google Gemini para simular conversaciones humanas.
+Este proyecto fue creado como una demostración de las capacidades de las APIs de Anthropic Claude y Google Gemini para simular conversaciones humanas en un entorno de juego multijugador.
