@@ -35,6 +35,7 @@ venv.bak/
 *.pem
 config.ini
 secrets.json
+firebase-credentials.json
 
 # Streamlit
 .streamlit/secrets.toml
