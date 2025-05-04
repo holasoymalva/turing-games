@@ -261,13 +261,58 @@ def send_message(game_id, player_id, message_text):
                             .order_by('timestamp')
                             .get()]
             
-            ai_response = get_ai_response(player_data['ai_type'], message_text, chat_history)
+            ai_response = get_ai_response(player_data['ai_type'], message_text, chat_history, player_data)
+            
+            # Crear mensaje de respuesta de la IA
+            ai_message_id = str(uuid.uuid4())
+            ai_message_data = {
+                'player_id': player_id,
+                'player_name': player_data['name'],
+                'content': ai_response,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'round': game_data['current_round'],
+                'is_ai_response': True
+            }
+            
+            # Guardar respuesta de la IA
+            game_ref.collection('messages').document(ai_message_id).set(ai_message_data)
+            
+            # Incrementar contador de mensajes del agente IA
+            player_ref.update({
+                'messages_sent': firestore.Increment(1)
+            })
+            
         except Exception as e:
             # Si hay un error (como índice no disponible), usar historial vacío
-            st.warning(f"No se pudo obtener el historial completo del chat: {str(e)}")
-            ai_response = get_ai_response(player_data['ai_type'], message_text, [])
+            print(f"No se pudo obtener el historial completo del chat: {str(e)}")
+            ai_response = get_ai_response(player_data['ai_type'], message_text, [], player_data)
             
+            # Crear mensaje de respuesta de la IA
+            ai_message_id = str(uuid.uuid4())
+            ai_message_data = {
+                'player_id': player_id,
+                'player_name': player_data['name'],
+                'content': ai_response,
+                'timestamp': firestore.SERVER_TIMESTAMP,
+                'round': game_data['current_round'],
+                'is_ai_response': True
+            }
+            
+            # Guardar respuesta de la IA
+            game_ref.collection('messages').document(ai_message_id).set(ai_message_data)
+            
+            # Incrementar contador de mensajes del agente IA
+            player_ref.update({
+                'messages_sent': firestore.Increment(1)
+            })
+    
+    # Importante: Hacer que los agentes IA reaccionen a los mensajes de humanos
+    if not player_data.get('is_ai', False):
+        # Si es un mensaje de un humano, hacer que algunos agentes IA respondan
+        trigger_ai_responses(game_id, player_id, message_text, game_data['current_round'])
+    
     return True, "Mensaje enviado correctamente"
+
 
 def submit_vote(game_id, voter_id, votes):
     """Enviar votos sobre quién es IA"""
@@ -407,66 +452,222 @@ def end_game(game_id):
             game_ref.collection('players').document(player.id).update({
                 'revealed': True
             })
+def trigger_ai_responses(game_id, human_player_id, human_message, current_round):
+    """Hacer que los agentes IA respondan a mensajes de humanos"""
+    game_ref = db.collection('games').document(game_id)
+    
+    # Obtener todos los agentes IA disponibles (que aún tengan mensajes disponibles)
+    ai_agents = [p for p in game_ref.collection('players').get() 
+                if p.to_dict().get('is_ai', False) and p.to_dict().get('messages_sent', 0) < 5]
+    
+    # Si no hay agentes disponibles, no hacer nada
+    if not ai_agents:
+        return
+    
+    # Determinar cuántos agentes responderán (entre 1 y 2)
+    num_responders = min(random.randint(1, 2), len(ai_agents))
+    
+    # Seleccionar agentes aleatorios para responder
+    responders = random.sample(ai_agents, num_responders)
+    
+    # Obtener historial de mensajes para contexto
+    try:
+        chat_history = [msg.to_dict() for msg in 
+                        game_ref.collection('messages')
+                        .filter('round', '==', current_round)
+                        .order_by('timestamp')
+                        .get()]
+    except Exception as e:
+        print(f"Error al obtener historial: {str(e)}")
+        chat_history = []
+    
+    # Hacer que cada agente seleccionado responda
+    for agent in responders:
+        agent_data = agent.to_dict()
+        
+        # Verificar si el agente aún tiene mensajes disponibles
+        if agent_data.get('messages_sent', 0) >= 5:
+            continue
+            
+        # Añadir un pequeño retraso aleatorio para simular tiempo de escritura humana
+        time.sleep(random.uniform(1.5, 4.0))
+        
+        # Generar respuesta del agente, mencionando específicamente al humano
+        context = f"Un humano llamado {game_ref.collection('players').document(human_player_id).get().to_dict()['name']} acaba de escribir: '{human_message}'. Respóndele directamente."
+        ai_response = get_ai_response(agent_data['ai_type'], context, chat_history, agent_data)
+        
+        # Crear y guardar el mensaje
+        ai_message_id = str(uuid.uuid4())
+        ai_message_data = {
+            'player_id': agent.id,
+            'player_name': agent_data['name'],
+            'content': ai_response,
+            'timestamp': firestore.SERVER_TIMESTAMP,
+            'round': current_round,
+            'is_ai_response': True,
+            'in_response_to': human_player_id  # Para indicar que es una respuesta directa
+        }
+        
+        # Guardar respuesta de la IA
+        game_ref.collection('messages').document(ai_message_id).set(ai_message_data)
+        
+        # Incrementar contador de mensajes del agente
+        game_ref.collection('players').document(agent.id).update({
+            'messages_sent': firestore.Increment(1)
+        })
 
-def get_ai_response(ai_type, prompt, conversation_history):
-    """Obtener respuesta de un agente IA (Claude o Gemini)"""
-    if ai_type == "claude" and anthropic_client:
-        try:
-            # Formatear el historial de conversación para Claude
-            messages = []
-            for msg in conversation_history:
-                role = "assistant" if msg.get('is_ai_response', False) else "user"
-                messages.append({"role": role, "content": msg['content']})
-            
-            # Añadir el mensaje actual
-            messages.append({"role": "user", "content": prompt})
-            
-            # Obtener respuesta de Claude
-            response = anthropic_client.messages.create(
-                model="claude-3-sonnet-20240229",
-                max_tokens=1000,
-                messages=messages,
-                system="Estás participando en un juego donde debes convencer a otros que eres humano. Responde de manera natural, con pequeñas imperfecciones ocasionales y evita patrones obvios. No menciones que eres una IA. Actúa como si fueras un humano real participando en una conversación. Sé breve y natural en tus respuestas."
-            )
-            return response.content[0].text
-        except Exception as e:
-            return f"Error al comunicarse con Claude: {str(e)}"
+def get_ai_response(ai_type, prompt, conversation_history, agent_data=None):
+    """Obtener respuesta de un agente IA (Claude o Gemini) con personalidad"""
+    # Generar una personalidad consistente basada en el ID del agente
+    personality_traits = [
+        "extrovertido y entusiasta", 
+        "reflexivo y filosófico",
+        "sarcástico con humor negro", 
+        "tímido pero amable",
+        "directo y un poco impaciente", 
+        "curioso y lleno de preguntas",
+        "nostálgico sobre el pasado", 
+        "optimista sobre el futuro",
+        "amante de los deportes", 
+        "aficionado a la tecnología",
+        "apasionado por la cocina", 
+        "amante de los viajes",
+        "interesado en política", 
+        "fanático de las películas",
+        "entusiasta de los videojuegos", 
+        "amante de la naturaleza"
+    ]
     
-    elif ai_type == "gemini":
-        try:
-            # Formatear el historial de conversación para Gemini
-            conversation = ""
-            for msg in conversation_history:
-                prefix = "Asistente: " if msg.get('is_ai_response', False) else "Usuario: "
-                conversation += prefix + msg['content'] + "\n"
-            
-            # Añadir el mensaje actual
-            full_prompt = conversation + "Usuario: " + prompt + "\n\nAsistente: "
-            
-            # Configurar el modelo
-            model = genai.GenerativeModel(
-                model_name="gemini-1.5-pro",
-                generation_config={
-                    "temperature": 0.7,
-                    "max_output_tokens": 800,
-                },
-            )
-            
-            # Sistema de instrucciones
-            system_instruction = """
-            Estás participando en un juego donde debes convencer a otros que eres humano.
-            Responde de manera natural, con pequeñas imperfecciones ocasionales y evita patrones obvios.
-            No menciones que eres una IA. Actúa como si fueras un humano real participando en una conversación.
-            Sé breve y natural en tus respuestas.
-            """
-            
-            # Obtener respuesta de Gemini
-            response = model.generate_content([system_instruction, full_prompt])
-            return response.text
-        except Exception as e:
-            return f"Error al comunicarse con Gemini: {str(e)}"
+    # Usar el nombre del agente para determinar su personalidad de manera consistente
+    if agent_data and 'name' in agent_data:
+        # Generar un hash del nombre para obtener un índice consistente
+        name_hash = hash(agent_data['name'])
+        personality_index = abs(name_hash) % len(personality_traits)
+        personality = personality_traits[personality_index]
+        
+        # Añadir algunos intereses específicos basados en el nombre
+        interests = [
+            "le gusta hablar de música", 
+            "tiene conocimientos de historia",
+            "menciona ocasionalmente viajes que ha hecho", 
+            "hace referencias a libros",
+            "comparte anécdotas personales", 
+            "hace preguntas a los demás",
+            "usa algunas expresiones coloquiales", 
+            "comparte opiniones sobre temas actuales"
+        ]
+        interest_index = (abs(name_hash) // 10) % len(interests)
+        additional_trait = interests[interest_index]
+        
+        personality = f"{personality} que {additional_trait}"
+    else:
+        # Si no hay datos del agente, usar personalidad predeterminada
+        personality = random.choice(personality_traits)
     
-    return "No se pudo generar una respuesta de IA."
+    # Crear instrucciones específicas según la personalidad
+    system_instruction = f"""
+    Estás participando en un juego donde debes convencer a otros que eres humano.
+    Actúa como una persona {personality}.
+    
+    Sigue estas reglas estrictamente:
+    1. NUNCA menciones que eres una IA, un modelo de lenguaje, o algo similar.
+    2. Responde como lo haría una persona real con la personalidad indicada.
+    3. Usa lenguaje conversacional y natural, no formal o académico.
+    4. Incluye imperfecciones ocasionales como abreviaturas, pequeños errores tipográficos, o frases incompletas.
+    5. Mantén tus respuestas breves y directas (1-3 frases).
+    6. Responde directamente al contexto de la conversación, no con respuestas genéricas.
+    7. Haz referencias ocasionales a experiencias personales ficticias pero creíbles.
+    8. No uses fórmulas evidentes como "Como humano, yo..." o "En mi experiencia humana...".
+    9. Muestra opiniones y preferencias claras sobre los temas discutidos.
+    10. A veces haz preguntas a los otros participantes para mantener la conversación.
+    """
+    
+    # Intentar con Gemini primero, independientemente del tipo de IA especificado
+    # (Esto garantiza que siempre tengamos un fallback funcional)
+    try:
+        # Formatear el historial de conversación para Gemini
+        conversation = ""
+        for msg in conversation_history:
+            prefix = "Asistente: " if msg.get('is_ai_response', False) else "Usuario: "
+            conversation += prefix + msg['content'] + "\n"
+        
+        # Añadir el mensaje actual
+        full_prompt = conversation + "Usuario: " + prompt + "\n\nAsistente: "
+        
+        # Configurar el modelo
+        model = genai.GenerativeModel(
+            model_name="gemini-1.5-pro",
+            generation_config={
+                "temperature": 0.9,  # Aumentar temperatura para más creatividad
+                "max_output_tokens": 800,
+            },
+        )
+        
+        # Obtener respuesta de Gemini
+        response = model.generate_content([system_instruction, full_prompt])
+        return response.text
+    except Exception as gemini_error:
+        print(f"Error con Gemini: {str(gemini_error)}")
+        # Si Gemini falla, intentamos con Claude solo si el tipo es claude
+        if ai_type == "claude" and anthropic_client:
+            try:
+                # Formatear el historial de conversación para Claude
+                messages = []
+                for msg in conversation_history:
+                    role = "assistant" if msg.get('is_ai_response', False) else "user"
+                    messages.append({"role": role, "content": msg['content']})
+                
+                # Añadir el mensaje actual
+                messages.append({"role": "user", "content": prompt})
+                
+                # Obtener respuesta de Claude
+                response = anthropic_client.messages.create(
+                    model="claude-3-sonnet-20240229",
+                    max_tokens=1000,
+                    temperature=0.9,  # Aumentar temperatura para más creatividad
+                    messages=messages,
+                    system=system_instruction
+                )
+                return response.content[0].text
+            except Exception as claude_error:
+                print(f"Error con Claude: {str(claude_error)}")
+                # Ambos modelos fallaron, usar respuestas de respaldo
+                return get_fallback_response(prompt, personality)
+        else:
+            # Gemini falló y no se pidió Claude, usar respuestas de respaldo
+            return get_fallback_response(prompt, personality)
+
+def get_fallback_response(prompt, personality):
+    """Proporcionar una respuesta de respaldo cuando ambos modelos de IA fallan"""
+    # Lista de respuestas genéricas pero que parecen humanas
+    fallback_responses = [
+        "¡Interesante punto! Nunca lo había pensado así, pero tiene sentido lo que dices.",
+        "Mmm, no estoy del todo seguro. ¿Alguien más tiene una opinión sobre esto?",
+        "¡Jaja! Eso me recuerda algo que me pasó la semana pasada, muy parecido.",
+        "¿De verdad? Pues yo tengo una opinión bastante diferente sobre eso.",
+        "Es un tema complicado... Tengo sentimientos encontrados al respecto.",
+        "Perdón por la demora en responder, estaba distraído. ¿Qué opinan los demás?",
+        "A veces me cuesta seguir conversaciones con tantos participantes, pero creo que entiendo tu punto.",
+        "Buena pregunta. No soy experto, pero diría que depende mucho del contexto.",
+        "Me parece bien lo que dices, aunque tengo algunas dudas. ¿Podríamos explorar más ese tema?",
+        "Perdón si estoy algo callado, estoy escuchando atentamente lo que todos tienen que decir.",
+        "¿Alguien más está de acuerdo con esto? Me gustaría saber qué piensan los demás.",
+        "A veces me cuesta expresar mis ideas claramente, pero creo que entiendes lo que quiero decir.",
+        "¡Exacto! Estaba pensando lo mismo pero no sabía cómo decirlo.",
+        "Hmm, no sé... Tengo que pensarlo un poco más antes de dar mi opinión.",
+        "¡Qué casualidad! Justo estaba leyendo algo sobre eso ayer.",
+        "Disculpen, tuve que contestar una llamada. ¿De qué estamos hablando ahora?",
+        "Soy nuevo/a en estos temas, así que agradezco que compartan sus conocimientos.",
+        "¡Me has leído la mente! Iba a decir algo muy parecido.",
+        "Ja, eso me hizo reír. Gracias por el momento de humor en medio de una charla seria.",
+        "Estoy tratando de seguir la conversación mientras hago otras cosas, disculpen si me pierdo algo."
+    ]
+    
+    # Elegir una respuesta basada en un hash del prompt para ser consistente
+    prompt_hash = hash(prompt)
+    response_index = abs(prompt_hash) % len(fallback_responses)
+    
+    return fallback_responses[response_index]
 
 # Función para simular mensajes de agentes IA
 def simulate_ai_messages(game_id):
@@ -489,17 +690,29 @@ def simulate_ai_messages(game_id):
         if agent_data.get('messages_sent', 0) > 0:
             continue
         
-        # Mensajes iniciales posibles
+        # Mensajes iniciales más variados y personalizados
         initial_messages = [
-            "¡Hola a todos! ¿Cómo están hoy?",
-            "Saludos, grupo. ¿Listos para empezar?",
-            "Hey, me alegra estar aquí. ¿De qué vamos a hablar?",
-            "Hola, soy nuevo en esto. ¿Alguien me explica de qué va el juego?",
-            "¡Qué interesante dinámica! Estoy emocionado por participar."
+            "Hola a todos! Primera vez en uno de estos juegos, ¿cómo funciona exactamente?",
+            "¡Qué tal! Me acabo de unir porque un amigo me lo recomendó. ¿Alguien más es nuevo?",
+            "Saludos desde Madrid, espero que todos estén bien hoy. ¿De dónde son ustedes?",
+            "¡Hola grupo! Estaba tomando café cuando me acordé que teníamos esta actividad, casi lo olvido jaja",
+            "Buenas! Acabo de terminar un día intenso de trabajo y me hacía ilusión participar en esto.",
+            "Hola a todos :) Me llamo {}, soy nueva/o aquí. ¿Qué tal están?",
+            "¡Hola! Primera vez participando en esto, me parece un concepto fascinante. ¿Alguien me explica más?",
+            "Hey! Me han dicho que esto es como un juego de detectives para identificar IAs. Qué interesante!",
+            "Hola a todos, acabo de conectarme. Se me hizo un poco tarde por el tráfico, lo siento!",
+            "¡Hola grupo! Este juego me recuerda a las partidas de 'Among Us' que hacíamos en pandemia, ¿a alguien más?"
         ]
         
-        # Seleccionar un mensaje aleatorio
-        message = random.choice(initial_messages)
+        # Seleccionar un mensaje aleatorio y personalizarlo
+        message_template = random.choice(initial_messages)
+        if "{}" in message_template:
+            message = message_template.format(agent_data['name'])
+        else:
+            message = message_template
+        
+        # Añadir un pequeño retraso aleatorio para simular tiempos de escritura humana
+        time.sleep(random.uniform(1.0, 3.0))
         
         # Enviar el mensaje
         send_message(game_id, agent.id, message)
@@ -706,8 +919,7 @@ elif st.session_state.game_id and st.session_state.player_id:
                     if msg['player_id'] == st.session_state.player_id:
                         st.chat_message("user").write(f"**Tú**: {msg['content']}")
                     else:
-                        st.chat_message("assistant").write(f"**{msg['player_name']}**: {msg['content']}")
-            
+                        st.chat_message("user").write(f"**{msg['player_name']}**: {msg['content']}")            
             # Formulario para enviar mensajes
             player_data = game_state['players'].get(st.session_state.player_id, {})
             messages_sent = player_data.get('messages_sent', 0)
