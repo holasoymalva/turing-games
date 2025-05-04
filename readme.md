@@ -25,8 +25,8 @@ Este proyecto implementa un juego de estilo Turing donde múltiples jugadores hu
 ### 1. Clonar el Repositorio
 
 ```bash
-git clone https://github.com/tu-usuario/agente-humano-multiplayer.git
-cd agente-humano-multiplayer
+git clone https://github.com/holasoymalva/turing-games.git
+cd turing-games
 ```
 
 ### 2. Crear un Entorno Virtual
@@ -194,7 +194,3 @@ Si deseas contribuir a este proyecto:
 ## Licencia
 
 Este proyecto está bajo la licencia MIT. Consulta el archivo LICENSE para obtener más detalles.
-
----
-
-Este proyecto fue creado como una demostración de las capacidades de las APIs de Anthropic Claude y Google Gemini para simular conversaciones humanas en un entorno de juego multijugador.
